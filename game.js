@@ -369,6 +369,9 @@
     const gameRef = window.firestoreDoc(window.db, "game_state", "current");
 
     window.onSnapshot(gameRef, (snap) => {
+      // Hide the loading screen on first successful data received
+      if (typeof window.hideLoader === 'function') window.hideLoader();
+
       if (!snap.exists()) return;
       const data = snap.data();
       const mult = Number(data.multiplier) || 1.0;

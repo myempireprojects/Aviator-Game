@@ -30,6 +30,203 @@
       overflow: hidden;
     }
 
+    /* ══════════════════════════════════════════
+       LOADING SCREEN
+    ══════════════════════════════════════════ */
+    #loader {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #090b14;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    #loader.hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Stars inside loader */
+    #loader-stars {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .lstar {
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+      animation: ltwinkle var(--d, 2s) ease-in-out infinite alternate;
+    }
+    @keyframes ltwinkle { from { opacity: 0.05; } to { opacity: 0.8; } }
+
+    /* Runway / sky scene */
+    #loader-scene {
+      position: relative;
+      width: 100%;
+      height: 180px;
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+
+    /* Glowing ground line */
+    .runway {
+      position: absolute;
+      bottom: 0;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+      box-shadow: 0 0 16px var(--accent);
+    }
+    /* Runway dashes */
+    .runway-dashes {
+      position: absolute;
+      bottom: 2px;
+      left: 0; right: 0;
+      height: 10px;
+      overflow: hidden;
+    }
+    .runway-dashes::before {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 0; right: 0;
+      height: 2px;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(255,255,255,0.15) 0px,
+        rgba(255,255,255,0.15) 30px,
+        transparent 30px,
+        transparent 60px
+      );
+      animation: dashmove 0.6s linear infinite;
+    }
+    @keyframes dashmove { from { transform: translateX(0); } to { transform: translateX(-60px); } }
+
+    /* Exhaust trail */
+    .trail {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 4px;
+      border-radius: 2px;
+      animation: trail-anim 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+      transform-origin: right center;
+    }
+    @keyframes trail-anim {
+      0%   { left: -10%; width: 0;   opacity: 0; top: 72%; }
+      15%  { opacity: 0.9; }
+      60%  { left: 18%;  width: 60px; top: 42%; opacity: 0.6; }
+      85%  { left: 60%;  width: 40px; top: 22%; opacity: 0.3; }
+      100% { left: 100%; width: 0;   top: 10%; opacity: 0; }
+    }
+
+    /* Plane SVG */
+    .loader-plane {
+      position: absolute;
+      width: 70px;
+      animation: plane-fly 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+      filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)) drop-shadow(0 0 20px var(--accent));
+    }
+    @keyframes plane-fly {
+      0%   { left: -12%; top: 72%; transform: rotate(-5deg) scaleX(1); }
+      15%  { transform: rotate(-10deg) scaleX(1); }
+      60%  { left: 60%;  top: 38%; transform: rotate(-18deg) scaleX(1); }
+      85%  { transform: rotate(-22deg) scaleX(1); }
+      100% { left: 108%; top: 8%;  transform: rotate(-20deg) scaleX(1); }
+    }
+
+    /* Afterburner particles */
+    .spark {
+      position: absolute;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--accent2);
+      animation: spark-fly 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+    }
+    .spark:nth-child(1) { animation-delay: 0s;    width:4px; height:4px; }
+    .spark:nth-child(2) { animation-delay: 0.08s; background: #fff; }
+    .spark:nth-child(3) { animation-delay: 0.16s; width:2px; height:2px; }
+    @keyframes spark-fly {
+      0%   { left: -8%; top: 72%; opacity: 1; }
+      60%  { left: 55%; top: 40%; opacity: 0.7; }
+      85%  { left: 57%; top: 23%; opacity: 0; }
+      100% { left: 100%; top: 5%; opacity: 0; }
+    }
+
+    /* Title */
+    .loader-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.2rem, 10vw, 3.4rem);
+      font-weight: 900;
+      letter-spacing: 10px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2), #fff, var(--accent));
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 2s linear infinite;
+      margin-bottom: 6px;
+    }
+    @keyframes shimmer { to { background-position: 200% center; } }
+
+    .loader-subtitle {
+      font-size: 0.75rem;
+      letter-spacing: 4px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+
+    /* Progress bar */
+    .loader-bar-wrap {
+      width: min(320px, 80vw);
+      height: 4px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .loader-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      box-shadow: 0 0 10px var(--accent);
+      transition: width 0.3s ease;
+    }
+
+    .loader-status {
+      font-size: 0.7rem;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      min-height: 18px;
+    }
+
+    /* Orbit rings */
+    .orbit-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(233, 30, 99, 0.12);
+      animation: orbit-pulse 3s ease-in-out infinite alternate;
+    }
+    .orbit-ring:nth-child(1) { width: 260px; height: 260px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 0s; }
+    .orbit-ring:nth-child(2) { width: 340px; height: 340px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 0.5s; }
+    .orbit-ring:nth-child(3) { width: 420px; height: 420px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 1s; border-color: rgba(255,107,53,0.08); }
+    @keyframes orbit-pulse {
+      from { opacity: 0.4; transform: translate(-50%,-50%) scale(0.96); }
+      to   { opacity: 1;   transform: translate(-50%,-50%) scale(1.04); }
+    }
+
+    /* ══════════════════════════════════════════
+       GAME STYLES (unchanged from original)
+    ══════════════════════════════════════════ */
+
     /* ── TOP BAR ── */
     #topbar {
       display: flex;
@@ -286,6 +483,72 @@
 </head>
 <body>
 
+  <!-- ══════════════════════════════════════════
+       LOADING SCREEN
+  ══════════════════════════════════════════ -->
+  <div id="loader">
+    <div id="loader-stars"></div>
+
+    <!-- Decorative orbit rings -->
+    <div class="orbit-ring"></div>
+    <div class="orbit-ring"></div>
+    <div class="orbit-ring"></div>
+
+    <!-- Plane animation scene -->
+    <div id="loader-scene">
+      <!-- Exhaust trail -->
+      <div class="trail" style="background: linear-gradient(90deg, transparent, rgba(255,107,53,0.6), rgba(255,107,53,0.2));"></div>
+
+      <!-- Spark particles -->
+      <div class="spark"></div>
+      <div class="spark"></div>
+      <div class="spark"></div>
+
+      <!-- Plane SVG -->
+      <svg class="loader-plane" viewBox="0 0 120 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Fuselage -->
+        <ellipse cx="65" cy="30" rx="50" ry="11" fill="white"/>
+        <!-- Nose cone -->
+        <path d="M115 30 L108 24 L108 36 Z" fill="#e0e0e0"/>
+        <!-- Main wing -->
+        <path d="M55 30 L35 6 L20 6 L45 30 Z" fill="white" opacity="0.9"/>
+        <path d="M55 30 L35 54 L20 54 L45 30 Z" fill="white" opacity="0.7"/>
+        <!-- Tail wing horizontal -->
+        <path d="M18 30 L5 18 L5 30 Z" fill="white" opacity="0.85"/>
+        <path d="M18 30 L5 42 L5 30 Z" fill="white" opacity="0.7"/>
+        <!-- Tail fin vertical -->
+        <path d="M20 28 L10 14 L15 28 Z" fill="white" opacity="0.9"/>
+        <!-- Engine pod -->
+        <ellipse cx="48" cy="40" rx="10" ry="4" fill="#ccc"/>
+        <!-- Window strip -->
+        <rect x="68" y="24" width="28" height="5" rx="2" fill="rgba(150,200,255,0.4)"/>
+        <!-- Afterburner glow -->
+        <ellipse cx="12" cy="30" rx="14" ry="5" fill="url(#burnGrad)"/>
+        <defs>
+          <radialGradient id="burnGrad" cx="100%" cy="50%" r="100%">
+            <stop offset="0%" stop-color="#ff6b35" stop-opacity="0.9"/>
+            <stop offset="60%" stop-color="#e91e63" stop-opacity="0.4"/>
+            <stop offset="100%" stop-color="transparent" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+      </svg>
+
+      <!-- Runway -->
+      <div class="runway"></div>
+      <div class="runway-dashes"></div>
+    </div>
+
+    <!-- Title -->
+    <div class="loader-title">AVIATOR</div>
+    <div class="loader-subtitle">Prepare for takeoff</div>
+
+    <!-- Progress bar -->
+    <div class="loader-bar-wrap">
+      <div class="loader-bar" id="loader-bar"></div>
+    </div>
+    <div class="loader-status" id="loader-status">INITIALIZING SYSTEMS…</div>
+  </div>
+
   <!-- TOP BAR -->
   <div id="topbar">
     <div class="logo">✈ AVIATOR</div>
@@ -325,6 +588,63 @@
     <div class="tw" id="toast-amt"></div>
     <div class="ta">CASHED OUT ✓</div>
   </div>
+
+  <!-- ══════════════════════════════════════════
+       LOADER CONTROLLER
+  ══════════════════════════════════════════ -->
+  <script>
+    // Build loader stars
+    (function buildLoaderStars() {
+      const c = document.getElementById('loader-stars');
+      for (let i = 0; i < 100; i++) {
+        const s = document.createElement('div');
+        s.className = 'lstar';
+        const sz = Math.random() * 2 + 0.5;
+        s.style.cssText = `
+          width:${sz}px; height:${sz}px;
+          top:${Math.random()*100}%;
+          left:${Math.random()*100}%;
+          --d:${(Math.random()*3+1).toFixed(1)}s;
+          animation-delay:${(Math.random()*3).toFixed(1)}s;
+        `;
+        c.appendChild(s);
+      }
+    })();
+
+    const loaderBar    = document.getElementById('loader-bar');
+    const loaderStatus = document.getElementById('loader-status');
+    const loader       = document.getElementById('loader');
+
+    let loaderProgress = 0;
+    let loaderDone     = false;
+
+    // Animate progress bar to a target value
+    function setProgress(pct, label) {
+      loaderProgress = pct;
+      loaderBar.style.width = pct + '%';
+      if (label) loaderStatus.textContent = label;
+    }
+
+    // Called by game.js once the first Firestore snapshot is received
+    window.hideLoader = function() {
+      if (loaderDone) return;
+      loaderDone = true;
+      setProgress(100, 'CLEARED FOR TAKEOFF ✓');
+      setTimeout(() => {
+        loader.classList.add('hide');
+        // fully remove from DOM after transition
+        setTimeout(() => loader.remove(), 800);
+      }, 600);
+    };
+
+    // Staged progress to give visual feedback
+    setTimeout(() => setProgress(25, 'LOADING ASSETS…'),         300);
+    setTimeout(() => setProgress(50, 'CONNECTING TO SERVER…'),  1000);
+    setTimeout(() => setProgress(75, 'SYNCING GAME STATE…'),    2000);
+
+    // Fallback: force-hide after 6 s even if Firebase never responds
+    setTimeout(() => window.hideLoader(), 6000);
+  </script>
 
   <!-- Firebase -->
   <script type="module">
