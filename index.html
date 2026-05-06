@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AVIATOR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #090b14;
+      --panel:     #0e1120;
+      --accent:    #e91e63;
+      --accent2:   #ff6b35;
+      --green:     #00e676;
+      --text:      #e8eaf6;
+      --muted:     #7986cb;
+      --border:    #1c2340;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOP BAR ── */
+    #topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 18px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    #topbar .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #topbar .bal-wrap { text-align: right; }
+    #topbar .bal-label { font-size: 0.65rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+    #topbar .bal-val {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      color: var(--green);
+    }
+
+    /* ── GAME CANVAS ── */
+    #game-container {
+      position: relative;
+      flex: 1 1 auto;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 110%, #1a0630 0%, var(--bg) 70%);
+    }
+
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* Stars overlay */
+    #stars {
+      position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+    }
+    .star {
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+      animation: twinkle var(--d,3s) ease-in-out infinite alternate;
+    }
+    @keyframes twinkle { from { opacity: 0.1; } to { opacity: 0.9; } }
+
+    /* Multiplier */
+    #multiplier {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -60%);
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.5rem, 10vw, 5rem);
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 40px rgba(233,30,99,0.7), 0 0 80px rgba(233,30,99,0.3);
+      transition: color 0.3s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #multiplier.crashed {
+      color: var(--accent);
+      text-shadow: 0 0 40px rgba(233,30,99,1);
+      animation: shake 0.4s ease;
+    }
+    #multiplier.cashed {
+      color: var(--green);
+      text-shadow: 0 0 40px rgba(0,230,118,0.8);
+    }
+    @keyframes shake {
+      0%,100%{transform:translate(-50%,-60%)}
+      20%{transform:translate(-52%,-60%)}
+      40%{transform:translate(-48%,-60%)}
+      60%{transform:translate(-52%,-60%)}
+      80%{transform:translate(-49%,-60%)}
+    }
+
+    /* Phase badge */
+    #phase-badge {
+      position: absolute;
+      top: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(14,17,32,0.85);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* History ribbon */
+    #history {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      gap: 6px;
+      padding: 6px 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      background: rgba(9,11,20,0.5);
+    }
+    #history::-webkit-scrollbar { display: none; }
+    .hist-item {
+      flex: 0 0 auto;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+    }
+    .hist-item.low  { background:#2a0a14; color:#ef5350; }
+    .hist-item.mid  { background:#0a2a12; color:#66bb6a; }
+    .hist-item.high { background:#0a1a3a; color:#42a5f5; }
+
+    /* ── BOTTOM PANEL ── */
+    #bottom-panel {
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      padding: 14px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Bet amount row */
+    .bet-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bet-row label {
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      color: var(--muted);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    #betInput {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      padding: 10px 12px;
+      outline: none;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    #betInput::-webkit-outer-spin-button,
+    #betInput::-webkit-inner-spin-button { -webkit-appearance: none; }
+    #betInput:focus { border-color: var(--accent); }
+
+    .quick-bets {
+      display: flex; gap: 6px;
+    }
+    .qb {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 6px 0;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .qb:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Action button */
+    #actionBtn {
+      width: 100%;
+      padding: 18px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    #actionBtn.state-bet {
+      background: linear-gradient(135deg, var(--accent), #c2185b);
+      color: white;
+      box-shadow: 0 4px 20px rgba(233,30,99,0.4);
+    }
+    #actionBtn.state-bet:hover { box-shadow: 0 6px 30px rgba(233,30,99,0.6); transform: translateY(-1px); }
+    #actionBtn.state-cashout {
+      background: linear-gradient(135deg, var(--green), #00c853);
+      color: #000;
+      box-shadow: 0 4px 20px rgba(0,230,118,0.4);
+      animation: pulse-green 0.8s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-green {
+      from { box-shadow: 0 4px 20px rgba(0,230,118,0.3); }
+      to   { box-shadow: 0 6px 35px rgba(0,230,118,0.7); }
+    }
+    #actionBtn.state-waiting {
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      cursor: not-allowed;
+    }
+    #actionBtn:disabled { cursor: not-allowed; }
+
+    /* Win toast */
+    #toast {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%,-50%) scale(0.7);
+      background: var(--panel);
+      border: 2px solid var(--green);
+      border-radius: 16px;
+      padding: 20px 32px;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translate(-50%,-50%) scale(1);
+    }
+    #toast .tw { font-family:'Orbitron',sans-serif; font-size:1.6rem; color:var(--green); }
+    #toast .ta { font-size:0.8rem; color:var(--muted); margin-top:4px; letter-spacing:2px; }
+
+    /* Countdown overlay */
+    #countdown-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(9,11,20,0.7);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 4rem;
+      font-weight: 900;
+      color: white;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #countdown-overlay.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">✈ AVIATOR</div>
+    <div class="bal-wrap">
+      <div class="bal-label">Balance</div>
+      <div class="bal-val">$<span id="balance-val">100.00</span></div>
+    </div>
+  </div>
+
+  <!-- GAME AREA -->
+  <div id="game-container">
+    <div id="stars"></div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="phase-badge">WAITING FOR NEXT ROUND</div>
+    <div id="multiplier">1.00x</div>
+    <div id="history"></div>
+    <div id="countdown-overlay"></div>
+  </div>
+
+  <!-- BOTTOM PANEL -->
+  <div id="bottom-panel">
+    <div class="bet-row">
+      <label>Bet $</label>
+      <input id="betInput" type="number" value="10" min="1" max="1000" />
+    </div>
+    <div class="quick-bets">
+      <button class="qb" data-amt="5">$5</button>
+      <button class="qb" data-amt="10">$10</button>
+      <button class="qb" data-amt="25">$25</button>
+      <button class="qb" data-amt="50">$50</button>
+    </div>
+    <button id="actionBtn" class="state-bet">PLACE BET</button>
+  </div>
+
+  <!-- Win Toast -->
+  <div id="toast">
+    <div class="tw" id="toast-amt"></div>
+    <div class="ta">CASHED OUT ✓</div>
+  </div>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBQ1pK9_Ei-fQZSzwXnqcHp20KvcXi1jC8",
+      authDomain: "aviatorgame-18041.firebaseapp.com",
+      projectId: "aviatorgame-18041",
+      storageBucket: "aviatorgame-18041.firebasestorage.app",
+      messagingSenderId: "62361165710",
+      appId: "1:62361165710:web:797c2fdf8c8e3dade98edf",
+      measurementId: "G-LFH6H8TJ2Z"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+    window.db = db;
+    window.onSnapshot = onSnapshot;
+    window.firestoreDoc = doc;
+
+    // Signal that Firebase is ready
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
+  <script src="game.js"></script>
+</body>
+</html>
