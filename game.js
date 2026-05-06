@@ -1,116 +1,185 @@
-/* =====================================================================
-   game.js  –  Aviator client-side engine
-   Primary:  Firestore `game_state/current` real-time listener
-   Fallback: Local simulation engine (activates if Firebase fails/times out)
-   ===================================================================== */
-
+/* ================================================================
+   game.js – Aviator ZM  |  Zambian Kwacha Edition
+   Features:
+   • Animated plane that rises from bottom-left, curves upward
+   • Gentle hover/bounce while flying
+   • Animated smoke/exhaust trail particles behind engine
+   • Curve line with gradient fill
+   • Firestore real-time listener with offline demo fallback
+   • Wallet: deposit / withdraw / history (localStorage)
+   • K0.50 minimum bet
+================================================================ */
 (function () {
   "use strict";
 
-  // ── DOM refs ──────────────────────────────────────────────────────────
-  const canvas      = document.getElementById("gameCanvas");
-  const ctx         = canvas.getContext("2d");
-  const multDisplay = document.getElementById("multiplier");
-  const actionBtn   = document.getElementById("actionBtn");
-  const balDisplay  = document.getElementById("balance-val");
-  const phaseBadge  = document.getElementById("phase-badge");
-  const historyEl   = document.getElementById("history");
-  const toast       = document.getElementById("toast");
-  const toastAmt    = document.getElementById("toast-amt");
-  const betInput    = document.getElementById("betInput");
-  const countdownEl = document.getElementById("countdown-overlay");
-
-  // ── State ─────────────────────────────────────────────────────────────
-  let balance     = parseFloat(localStorage.getItem("aviator_balance") || "100");
-  let hasBet      = false;
-  let betAmount   = 10;
-  let gameStatus  = "waiting";
-  let currentMult = 1.0;
-  let history     = JSON.parse(localStorage.getItem("aviator_history") || "[]");
-
-  let curvePoints = [];
-
-  // Connection tracking
-  let firebaseConnected = false;
-  let usingLocalMode    = false;
-  let firebaseTimeoutId = null;
-
-  // ── Helpers ───────────────────────────────────────────────────────────
-  function saveBalance() { localStorage.setItem("aviator_balance", balance.toFixed(2)); }
-  function saveHistory()  { localStorage.setItem("aviator_history", JSON.stringify(history.slice(-20))); }
-
-  function setBalance(val) {
-    balance = val;
-    balDisplay.textContent = balance.toFixed(2);
-    saveBalance();
-  }
-
-  function resizeCanvas() {
-    canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
-    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-  }
-
-  // ── Stars ─────────────────────────────────────────────────────────────
-  function buildStars() {
-    const container = document.getElementById("stars");
-    container.innerHTML = "";
-    for (let i = 0; i < 80; i++) {
-      const s = document.createElement("div");
-      s.className = "star";
-      const size = Math.random() * 2.5 + 0.5;
-      s.style.cssText = `
-        width:${size}px; height:${size}px;
-        top:${Math.random()*100}%;
-        left:${Math.random()*100}%;
-        --d:${(Math.random()*3+1.5).toFixed(1)}s;
-        animation-delay:${(Math.random()*3).toFixed(1)}s
-      `;
-      container.appendChild(s);
-    }
-  }
-
-  // ── Canvas drawing ────────────────────────────────────────────────────
+  /* ── Canvas setup ───────────────────────────────────────── */
+  const canvas = document.getElementById("gc");
+  const ctx    = canvas.getContext("2d");
   const W = () => canvas.offsetWidth;
   const H = () => canvas.offsetHeight;
 
-  function mapMult(m) {
-    const progress = Math.min((m - 1) / 15, 1);
-    const x = progress * W() * 0.88;
-    const y = H() - 30 - (progress * progress * (H() - 60));
-    return { x, y };
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = canvas.offsetWidth  * dpr;
+    canvas.height = canvas.offsetHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  /* ── DOM refs ───────────────────────────────────────────── */
+  const multEl    = document.getElementById("multiplier");
+  const actionBtn = document.getElementById("actionBtn");
+  const balDisp   = document.getElementById("bal-disp");
+  const mBalDisp  = document.getElementById("m-bal");
+  const phaseBadge= document.getElementById("phase-badge");
+  const histEl    = document.getElementById("history");
+  const cdownEl   = document.getElementById("cdown");
+  const connBadge = document.getElementById("conn-badge");
+  const betInput  = document.getElementById("betInput");
+  const toast     = document.getElementById("toast");
+  const tAmt      = document.getElementById("t-amt");
+  const errToast  = document.getElementById("err-toast");
+
+  /* ── Wallet modal refs ──────────────────────────────────── */
+  const modalOv   = document.getElementById("modal-ov");
+  const closeBtn  = document.getElementById("closeModal");
+  const walletBtn = document.getElementById("walletBtn");
+  const tDep      = document.getElementById("tDep");
+  const tWit      = document.getElementById("tWit");
+  const tHist     = document.getElementById("tHist");
+  const tabForm   = document.getElementById("tab-form");
+  const tabHist   = document.getElementById("tab-hist");
+  const wdFields  = document.getElementById("wdraw-fields");
+  const mAmt      = document.getElementById("mAmt");
+  const confirmBtn= document.getElementById("confirmBtn");
+  const txList    = document.getElementById("txList");
+
+  /* ── State ──────────────────────────────────────────────── */
+  const MIN_BET   = 0.50;
+  let balance     = parseFloat(localStorage.getItem("zav_balance") || "0");
+  let txHistory   = JSON.parse(localStorage.getItem("zav_tx") || "[]");
+  let roundHistory= JSON.parse(localStorage.getItem("zav_rounds") || "[]");
+
+  let hasBet      = false;
+  let betAmount   = 0.50;
+  let status      = "waiting"; // waiting | flying | crashed
+  let currentMult = 1.0;
+  let activeTab   = "dep";
+
+  /* ── Plane animation state ──────────────────────────────── */
+  let curvePoints = [];        // {x,y} trail of the curve
+  let smokeParticles = [];     // exhaust smoke particles
+  let bounceT     = 0;         // time counter for hover bounce
+  let animRaf     = null;
+
+  /* ── Smoke particle pool ────────────────────────────────── */
+  function spawnSmoke(x, y, angle) {
+    // Spawn 2 particles per frame when flying
+    for (let i = 0; i < 2; i++) {
+      const spread = (Math.random() - 0.5) * 0.4;
+      smokeParticles.push({
+        x, y,
+        vx: Math.cos(angle + Math.PI + spread) * (1.5 + Math.random() * 1.5),
+        vy: Math.sin(angle + Math.PI + spread) * (1.5 + Math.random() * 1.5),
+        life: 1.0,
+        decay: 0.025 + Math.random() * 0.02,
+        size: 4 + Math.random() * 6,
+        // Alternate orange/white smoke
+        color: Math.random() > 0.5 ? "255,140,60" : "200,200,220"
+      });
+    }
+  }
+
+  function updateSmoke() {
+    smokeParticles = smokeParticles.filter(p => p.life > 0);
+    for (const p of smokeParticles) {
+      p.x   += p.vx;
+      p.y   += p.vy;
+      p.size *= 1.04; // expand as it fades
+      p.life -= p.decay;
+    }
+  }
+
+  function drawSmoke() {
+    for (const p of smokeParticles) {
+      ctx.save();
+      ctx.globalAlpha = p.life * 0.55;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      g.addColorStop(0, `rgba(${p.color},0.8)`);
+      g.addColorStop(1, `rgba(${p.color},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /* ── Map multiplier → canvas position ──────────────────── */
+  function multToPos(m) {
+    // progress 0→1 as mult goes 1→~12
+    const prog  = Math.min((m - 1) / 11, 1);
+    const x     = 30 + prog * (W() - 80);
+    // Quadratic curve: starts near bottom-left, arcs upward
+    const yFull = H() - 40;  // bottom
+    const yTop  = H() * 0.12; // near top
+    const y     = yFull - (prog * prog) * (yFull - yTop);
+    return { x, y, prog };
+  }
+
+  /* ── Draw the plane ─────────────────────────────────────── */
+  function drawPlane(x, y, angle, bounce) {
+    ctx.save();
+    ctx.translate(x, y + bounce);
+    ctx.rotate(angle);
+
+    // Glow halo
+    ctx.shadowColor = "rgba(255,255,255,0.6)";
+    ctx.shadowBlur  = 14;
+
+    // Body / fuselage
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(28, 0);         // nose
+    ctx.bezierCurveTo(20,-5, -10,-5, -18,0);
+    ctx.bezierCurveTo(-10, 5,  20,  5,  28,0);
+    ctx.fill();
+
+    // Main wing
+    ctx.fillStyle = "#e0e4ff";
+    ctx.beginPath();
+    ctx.moveTo(6,  0);
+    ctx.lineTo(-2,-22);
+    ctx.lineTo(-12,-22);
+    ctx.lineTo(-4,  0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Small rear stabilizer
+    ctx.fillStyle = "#c5caff";
+    ctx.beginPath();
+    ctx.moveTo(-14, 0);
+    ctx.lineTo(-22,-12);
+    ctx.lineTo(-24, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cockpit window
+    ctx.fillStyle = "rgba(100,200,255,0.7)";
+    ctx.beginPath();
+    ctx.ellipse(16, -2, 5, 3, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  /* ── Draw full scene ────────────────────────────────────── */
   function drawScene() {
     const w = W(), h = H();
     ctx.clearRect(0, 0, w, h);
-    if (curvePoints.length < 2) return;
 
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, "rgba(233,30,99,0.25)");
-    grad.addColorStop(1, "rgba(233,30,99,0)");
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    for (const p of curvePoints) ctx.lineTo(p.x, p.y);
-    ctx.lineTo(curvePoints[curvePoints.length - 1].x, h);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Glowing curve line
-    ctx.beginPath();
-    ctx.moveTo(curvePoints[0].x, curvePoints[0].y);
-    for (const p of curvePoints) ctx.lineTo(p.x, p.y);
-    ctx.strokeStyle = "#e91e63";
-    ctx.lineWidth   = 3;
-    ctx.shadowColor = "#e91e63";
-    ctx.shadowBlur  = 16;
-    ctx.stroke();
-    ctx.shadowBlur  = 0;
-
-    // Grid lines
-    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    // Faint grid
+    ctx.strokeStyle = "rgba(255,255,255,0.035)";
     ctx.lineWidth = 1;
     for (let gx = 0; gx < w; gx += w / 5) {
       ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
@@ -119,352 +188,449 @@
       ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
     }
 
-    // Plane
-    if (gameStatus === "flying" && curvePoints.length > 1) {
-      const tip   = curvePoints[curvePoints.length - 1];
-      const prev  = curvePoints[curvePoints.length - 2];
+    if (curvePoints.length < 2) return;
+
+    // Gradient fill under curve
+    const last = curvePoints[curvePoints.length - 1];
+    const fill = ctx.createLinearGradient(0, 0, 0, h);
+    if (status === "crashed") {
+      fill.addColorStop(0, "rgba(233,30,99,0.18)");
+      fill.addColorStop(1, "rgba(233,30,99,0)");
+    } else {
+      fill.addColorStop(0, "rgba(233,30,99,0.28)");
+      fill.addColorStop(1, "rgba(233,30,99,0)");
+    }
+    ctx.beginPath();
+    ctx.moveTo(curvePoints[0].x, h);
+    for (const p of curvePoints) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(last.x, h);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // Curve line
+    ctx.beginPath();
+    ctx.moveTo(curvePoints[0].x, curvePoints[0].y);
+    for (const p of curvePoints) ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = status === "crashed" ? "#ff1744" : "#e91e63";
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = status === "crashed" ? "#ff1744" : "#e91e63";
+    ctx.shadowBlur  = 18;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    // Smoke
+    drawSmoke();
+
+    // Plane (only while flying, with bounce)
+    if (status === "flying" && curvePoints.length >= 2) {
+      const tip  = curvePoints[curvePoints.length - 1];
+      const prev = curvePoints[curvePoints.length - 2];
       const angle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
-      drawPlane(tip.x, tip.y, angle);
+      const bounce = Math.sin(bounceT * 3.5) * 3.5; // gentle hover
+      drawPlane(tip.x, tip.y, angle, bounce);
     }
   }
 
-  function drawPlane(x, y, angle) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.shadowColor = "#fff";
-    ctx.shadowBlur  = 10;
-    ctx.fillStyle   = "#ffffff";
+  /* ── Animation loop (runs while flying) ────────────────── */
+  function startAnimLoop() {
+    cancelAnimationFrame(animRaf);
+    function loop() {
+      bounceT += 0.016;
+      updateSmoke();
 
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 22, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+      // Spawn smoke at plane tip if we have curve points
+      if (status === "flying" && curvePoints.length >= 2) {
+        const tip  = curvePoints[curvePoints.length - 1];
+        const prev = curvePoints[curvePoints.length - 2];
+        const angle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+        spawnSmoke(tip.x, tip.y, angle);
+      }
 
-    ctx.beginPath();
-    ctx.moveTo(-4, 0); ctx.lineTo(-14, -18); ctx.lineTo(-20, -18); ctx.lineTo(-8, 0);
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(-18, 0); ctx.lineTo(-28, -10); ctx.lineTo(-28, 0);
-    ctx.fill();
-
-    const trail = ctx.createLinearGradient(-22, 0, -50, 0);
-    trail.addColorStop(0, "rgba(255,100,50,0.8)");
-    trail.addColorStop(1, "rgba(255,100,50,0)");
-    ctx.fillStyle = trail;
-    ctx.beginPath();
-    ctx.ellipse(-30, 0, 18, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-    ctx.restore();
+      drawScene();
+      animRaf = requestAnimationFrame(loop);
+    }
+    loop();
   }
 
-  // ── Shared round handlers ─────────────────────────────────────────────
-  function badgeText(label) {
-    return usingLocalMode ? label + "  •  OFFLINE MODE" : label;
+  function stopAnimLoop() {
+    cancelAnimationFrame(animRaf);
+    animRaf = null;
   }
 
-  function startRound() {
-    curvePoints = [];
-    multDisplay.classList.remove("crashed", "cashed");
-    countdownEl.classList.remove("visible");
-  }
+  /* ── Game state handlers ────────────────────────────────── */
+  function onFlying(mult) {
+    if (status !== "flying") {
+      status = "flying";
+      curvePoints = [];
+      smokeParticles = [];
+      bounceT = 0;
+      multEl.classList.remove("crashed", "cashed");
+      cdownEl.classList.remove("on");
+      phaseBadge.textContent = "FLYING";
+      if (hasBet) setBtn("cash");
+      startAnimLoop();
+    }
 
-  function updateFlying(mult) {
     currentMult = mult;
-    multDisplay.textContent = mult.toFixed(2) + "x";
-    const pos = mapMult(mult);
+    multEl.textContent = mult.toFixed(2) + "x";
+
+    const pos = multToPos(mult);
     curvePoints.push({ x: pos.x, y: pos.y });
-    if (curvePoints.length > 300) curvePoints.shift();
-    drawScene();
-    if (hasBet) actionBtn.textContent = `CASH OUT  $${(betAmount * mult).toFixed(2)}`;
+    if (curvePoints.length > 400) curvePoints.shift();
+
+    if (hasBet) {
+      const pot = (betAmount * mult).toFixed(2);
+      actionBtn.textContent = `CASH OUT  K${pot}`;
+    }
   }
 
-  function handleCrash(finalMult) {
-    gameStatus = "crashed";
-    if (hasBet) { hasBet = false; setButtonState("bet"); }
-    multDisplay.classList.add("crashed");
-    multDisplay.textContent = `CRASHED @ ${finalMult.toFixed(2)}x`;
-    phaseBadge.textContent  = badgeText("CRASHED");
-    history.unshift(finalMult);
-    if (history.length > 20) history.pop();
-    saveHistory();
+  function onCrashed(finalMult) {
+    status = "crashed";
+    stopAnimLoop();
+
+    if (hasBet) {
+      hasBet = false;
+      setBtn("bet");
+      showErr("Round crashed — bet lost");
+    }
+
+    multEl.classList.add("crashed");
+    multEl.textContent = `CRASHED @ ${finalMult.toFixed(2)}x`;
+    phaseBadge.textContent = "CRASHED";
+
+    roundHistory.unshift(finalMult);
+    if (roundHistory.length > 30) roundHistory.pop();
+    localStorage.setItem("zav_rounds", JSON.stringify(roundHistory));
     renderHistory();
-    drawScene();
+
+    drawScene(); // final frame
     startCountdown(5);
   }
 
-  function handleWaiting() {
-    gameStatus = "waiting";
-    phaseBadge.textContent = badgeText("WAITING FOR NEXT ROUND");
-    multDisplay.classList.remove("crashed", "cashed");
-    multDisplay.textContent = "1.00x";
+  function onWaiting() {
+    status = "waiting";
+    stopAnimLoop();
     curvePoints = [];
+    smokeParticles = [];
+    multEl.classList.remove("crashed", "cashed");
+    multEl.textContent = "1.00x";
+    phaseBadge.textContent = "WAITING FOR NEXT ROUND";
     ctx.clearRect(0, 0, W(), H());
   }
 
-  function handleFlying(mult) {
-    if (gameStatus !== "flying") {
-      gameStatus = "flying";
-      phaseBadge.textContent = badgeText("FLYING");
-      startRound();
-      if (hasBet) setButtonState("cashout");
-    }
-    updateFlying(mult);
-  }
-
-  // ── Countdown ─────────────────────────────────────────────────────────
-  let countdownTimer;
-  function startCountdown(seconds) {
-    clearInterval(countdownTimer);
-    let s = seconds;
-    countdownEl.textContent = s;
-    countdownEl.classList.add("visible");
-    countdownTimer = setInterval(() => {
+  /* ── Countdown ──────────────────────────────────────────── */
+  let cdTimer;
+  function startCountdown(s) {
+    clearInterval(cdTimer);
+    cdownEl.textContent = s;
+    cdownEl.classList.add("on");
+    cdTimer = setInterval(() => {
       s--;
-      if (s <= 0) { clearInterval(countdownTimer); countdownEl.classList.remove("visible"); }
-      else countdownEl.textContent = s;
+      if (s <= 0) { clearInterval(cdTimer); cdownEl.classList.remove("on"); }
+      else cdownEl.textContent = s;
     }, 1000);
   }
 
-  // ── Button states ─────────────────────────────────────────────────────
-  function setButtonState(state) {
+  /* ── Button state ───────────────────────────────────────── */
+  function setBtn(state) {
     actionBtn.className = "";
+    actionBtn.disabled  = false;
     if (state === "bet") {
-      actionBtn.classList.add("state-bet");
+      actionBtn.classList.add("s-bet");
       actionBtn.textContent = "PLACE BET";
-      actionBtn.disabled = false;
-    } else if (state === "cashout") {
-      actionBtn.classList.add("state-cashout");
-      actionBtn.textContent = `CASH OUT  $${(betAmount * currentMult).toFixed(2)}`;
-      actionBtn.disabled = false;
-    } else if (state === "waiting") {
-      actionBtn.classList.add("state-waiting");
+    } else if (state === "cash") {
+      actionBtn.classList.add("s-cash");
+      actionBtn.textContent = `CASH OUT  K${(betAmount * currentMult).toFixed(2)}`;
+    } else {
+      actionBtn.classList.add("s-wait");
       actionBtn.textContent = "BET QUEUED ✓";
       actionBtn.disabled = true;
     }
   }
 
-  // ── Action button ──────────────────────────────────────────────────────
+  /* ── Action button ──────────────────────────────────────── */
   actionBtn.addEventListener("click", () => {
-    const bet = parseFloat(betInput.value) || 10;
+    const bet = parseFloat(betInput.value) || 0;
 
-    if (!hasBet && gameStatus !== "flying") {
-      if (bet > balance) { shakeElement(betInput); return; }
-      betAmount = bet; balance -= betAmount; setBalance(balance);
-      hasBet = true; setButtonState("waiting");
+    if (bet < MIN_BET) { showErr(`Minimum bet is K${MIN_BET.toFixed(2)}`); return; }
+    if (balance < MIN_BET) { showErr("Please deposit funds first"); openWallet("dep"); return; }
 
-    } else if (!hasBet && gameStatus === "flying") {
-      if (bet > balance) { shakeElement(betInput); return; }
-      betAmount = bet; balance -= betAmount; setBalance(balance);
-      hasBet = true; setButtonState("cashout");
-
-    } else if (hasBet && gameStatus === "flying") {
-      const winnings = betAmount * currentMult;
-      balance += winnings; setBalance(balance);
+    if (!hasBet && status !== "flying") {
+      if (bet > balance) { showErr("Insufficient balance"); return; }
+      betAmount = bet;
+      balance -= betAmount;
+      saveBalance();
+      hasBet = true;
+      setBtn("wait");
+    } else if (!hasBet && status === "flying") {
+      if (bet > balance) { showErr("Insufficient balance"); return; }
+      betAmount = bet;
+      balance -= betAmount;
+      saveBalance();
+      hasBet = true;
+      setBtn("cash");
+    } else if (hasBet && status === "flying") {
+      const win = betAmount * currentMult;
+      balance += win;
+      saveBalance();
       hasBet = false;
-      multDisplay.classList.add("cashed");
-      showToast(winnings);
-      setButtonState("bet");
+      multEl.classList.add("cashed");
+      showToast(win);
+      setBtn("bet");
     }
   });
 
-  document.querySelectorAll(".qb").forEach(btn => {
-    btn.addEventListener("click", () => { betInput.value = btn.dataset.amt; });
-  });
+  /* ── Quick bet buttons ──────────────────────────────────── */
+  document.querySelectorAll(".qb").forEach(b =>
+    b.addEventListener("click", () => { betInput.value = b.dataset.a; })
+  );
 
-  // ── Toast ─────────────────────────────────────────────────────────────
-  let toastTimeout;
-  function showToast(amount) {
-    toastAmt.textContent = `+$${amount.toFixed(2)}`;
-    toast.classList.add("show");
-    clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => toast.classList.remove("show"), 2500);
+  /* ── Balance helpers ────────────────────────────────────── */
+  function saveBalance() {
+    localStorage.setItem("zav_balance", balance.toFixed(2));
+    balDisp.textContent = balance.toFixed(2);
+    mBalDisp.textContent = balance.toFixed(2);
   }
 
-  function shakeElement(el) {
-    el.style.animation = "none";
-    requestAnimationFrame(() => { el.style.animation = "shake 0.4s ease"; });
-  }
-
-  // ── History ribbon ────────────────────────────────────────────────────
+  /* ── History ribbon ─────────────────────────────────────── */
   function renderHistory() {
-    historyEl.innerHTML = "";
-    history.forEach(m => {
-      const chip = document.createElement("div");
-      chip.className = "hist-item " + (m < 2 ? "low" : m < 5 ? "mid" : "high");
-      chip.textContent = m.toFixed(2) + "x";
-      historyEl.appendChild(chip);
+    histEl.innerHTML = "";
+    roundHistory.forEach(m => {
+      const c = document.createElement("div");
+      c.className = "hchip " + (m < 2 ? "lo" : m < 5 ? "mi" : "hi");
+      c.textContent = m.toFixed(2) + "x";
+      histEl.appendChild(c);
     });
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  //  LOCAL SIMULATION ENGINE
-  //  Full Aviator game loop running entirely in the browser.
-  //  Activated automatically when Firebase is unavailable.
-  // ══════════════════════════════════════════════════════════════════════
-
-  let localRafId      = null;
-  let localPhase      = "idle";
-  let localCrashPoint = 1.0;
-  let localRoundStart = 0;
-
-  // Crash point generator with ~5% house edge and exponential distribution
-  function generateCrashPoint() {
-    const r = Math.random();
-    // Guarantee at least a few 1.00x rounds (~5% of time)
-    if (r < 0.05) return 1.00;
-    const crash = Math.floor((0.95 / (1 - r)) * 100) / 100;
-    return Math.max(1.01, Math.min(crash, 200));
+  /* ── Stars ──────────────────────────────────────────────── */
+  function buildStars() {
+    const el = document.getElementById("stars");
+    el.innerHTML = "";
+    for (let i = 0; i < 80; i++) {
+      const s = document.createElement("div");
+      s.className = "star";
+      const sz = Math.random() * 2.4 + 0.4;
+      s.style.cssText = `width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--d:${(Math.random()*3+1.5).toFixed(1)}s;animation-delay:${(Math.random()*3).toFixed(1)}s`;
+      el.appendChild(s);
+    }
   }
 
-  function showLocalModeBadge() {
-    if (document.getElementById("local-badge")) return;
-    const logo = document.querySelector("#topbar .logo");
-    if (!logo) return;
-    const badge = document.createElement("span");
-    badge.id = "local-badge";
-    badge.textContent = "OFFLINE";
-    badge.style.cssText = `
-      margin-left:10px; font-size:0.5rem; letter-spacing:2px;
-      background:rgba(255,107,53,0.15); border:1px solid rgba(255,107,53,0.45);
-      color:#ff6b35; padding:2px 7px; border-radius:4px;
-      vertical-align:middle; -webkit-text-fill-color:#ff6b35;
-    `;
-    logo.appendChild(badge);
+  /* ── Toast / error ──────────────────────────────────────── */
+  let toastTm, errTm;
+  function showToast(amt) {
+    tAmt.textContent = `+K${amt.toFixed(2)}`;
+    toast.classList.add("on");
+    clearTimeout(toastTm);
+    toastTm = setTimeout(() => toast.classList.remove("on"), 2600);
+  }
+  function showErr(msg) {
+    errToast.textContent = msg;
+    errToast.classList.add("on");
+    clearTimeout(errTm);
+    errTm = setTimeout(() => errToast.classList.remove("on"), 2800);
   }
 
-  function hideLocalModeBadge() {
-    const b = document.getElementById("local-badge");
-    if (b) b.remove();
+  /* ── WALLET MODAL ───────────────────────────────────────── */
+  function openWallet(tab) {
+    tab = tab || "dep";
+    setTab(tab);
+    modalOv.classList.add("open");
+    mBalDisp.textContent = balance.toFixed(2);
+  }
+  function closeWallet() { modalOv.classList.remove("open"); }
+
+  walletBtn.addEventListener("click", () => openWallet(activeTab));
+  closeBtn.addEventListener("click", closeWallet);
+  modalOv.addEventListener("click", e => { if (e.target === modalOv) closeWallet(); });
+
+  function setTab(t) {
+    activeTab = t;
+    [tDep, tWit, tHist].forEach(b => b.classList.remove("on"));
+    tabForm.style.display = "none";
+    tabHist.style.display = "none";
+    wdFields.classList.remove("vis");
+    confirmBtn.className = "";
+
+    if (t === "dep") {
+      tDep.classList.add("on");
+      tabForm.style.display = "block";
+      confirmBtn.className  = "dep";
+      confirmBtn.textContent = "DEPOSIT FUNDS";
+    } else if (t === "wit") {
+      tWit.classList.add("on");
+      tabForm.style.display = "block";
+      wdFields.classList.add("vis");
+      confirmBtn.className  = "wit";
+      confirmBtn.textContent = "REQUEST WITHDRAWAL";
+    } else {
+      tHist.classList.add("on");
+      tabHist.style.display = "block";
+      renderTx();
+    }
   }
 
-  // rAF loop: grows multiplier exponentially until crash point is hit
-  function localFlightLoop(timestamp) {
-    if (localPhase !== "flying") return;
+  tDep.addEventListener("click",  () => setTab("dep"));
+  tWit.addEventListener("click",  () => setTab("wit"));
+  tHist.addEventListener("click", () => setTab("hist"));
 
-    const elapsed = timestamp - localRoundStart;
-    // e^(k*t) — k=0.00006 gives smooth growth starting at ~1x/sec
-    const mult    = Math.pow(Math.E, 0.00006 * elapsed);
-    const rounded = Math.floor(mult * 100) / 100;
+  // Quick amount chips
+  document.querySelectorAll(".qa").forEach(q =>
+    q.addEventListener("click", () => { mAmt.value = q.dataset.qa; })
+  );
 
-    if (rounded >= localCrashPoint) {
-      localPhase = "crashed";
-      handleCrash(parseFloat(localCrashPoint.toFixed(2)));
-      setTimeout(localStartWaiting, 5500);
+  /* ── Confirm deposit / withdraw ─────────────────────────── */
+  confirmBtn.addEventListener("click", () => {
+    const amt = parseFloat(mAmt.value) || 0;
+    if (amt < MIN_BET) { showErr(`Minimum amount is K${MIN_BET.toFixed(2)}`); return; }
+
+    if (activeTab === "dep") {
+      // Simulate instant deposit (in real app, integrate payment gateway here)
+      balance += amt;
+      saveBalance();
+      addTx("DEPOSIT", amt);
+      showErr(`K${amt.toFixed(2)} deposited ✓`);
+      errToast.style.background = "#0a2a12";
+      errToast.style.borderColor= "var(--green)";
+      errToast.style.color      = "#69f0ae";
+      mAmt.value = "";
+      closeWallet();
+      // Reset error toast style after
+      setTimeout(() => {
+        errToast.style.background = "";
+        errToast.style.borderColor= "";
+        errToast.style.color      = "";
+      }, 3200);
+    } else if (activeTab === "wit") {
+      if (amt > balance) { showErr("Insufficient balance"); return; }
+      const method  = document.getElementById("wMethod").value;
+      const account = document.getElementById("wAccount").value.trim();
+      if (!method)  { showErr("Select a payment method"); return; }
+      if (!account) { showErr("Enter account / mobile number"); return; }
+      balance -= amt;
+      saveBalance();
+      addTx("WITHDRAW", -amt);
+      showErr(`Withdrawal of K${amt.toFixed(2)} requested ✓`);
+      mAmt.value = "";
+      closeWallet();
+    }
+  });
+
+  /* ── Transaction log ────────────────────────────────────── */
+  function addTx(type, amt) {
+    txHistory.unshift({ type, amt, time: Date.now() });
+    if (txHistory.length > 50) txHistory.pop();
+    localStorage.setItem("zav_tx", JSON.stringify(txHistory));
+  }
+
+  function renderTx() {
+    if (!txHistory.length) {
+      txList.innerHTML = '<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0">No transactions yet</div>';
       return;
     }
-
-    handleFlying(rounded);
-    localRafId = requestAnimationFrame(localFlightLoop);
+    txList.innerHTML = txHistory.map(t => {
+      const d   = new Date(t.time);
+      const ts  = d.toLocaleDateString("en-ZM", { day:"2-digit", month:"short" }) + " " +
+                  d.toLocaleTimeString("en-ZM", { hour:"2-digit", minute:"2-digit" });
+      const pos = t.amt > 0;
+      return `
+        <div class="tx-item">
+          <div>
+            <div>${t.type}</div>
+            <div class="tx-meta">${ts}</div>
+          </div>
+          <div class="tx-amt ${pos ? "d":"w"}">${pos?"+":""}K${Math.abs(t.amt).toFixed(2)}</div>
+        </div>`;
+    }).join("");
   }
 
-  function localStartWaiting() {
-    if (!usingLocalMode) return;
-    localPhase = "waiting";
-    handleWaiting();
+  /* ── Offline demo mode (runs if Firebase fails) ─────────── */
+  let demoRunning = false;
+  function runDemoRound() {
+    if (demoRunning) return;
+    demoRunning = true;
+
+    // Generate crash point
+    const r = Math.random();
+    const crash = r < 0.03 ? 1.00 : Math.max(1.0, Math.floor(100 / (1 - r * 0.97)) / 100);
+
+    onWaiting();
     startCountdown(5);
-    setTimeout(localStartFlying, 5000);
+
+    setTimeout(() => {
+      let mult = 1.00;
+      const tick = setInterval(() => {
+        mult = Math.round(mult * 1.0045 * 100) / 100;
+        if (mult >= crash) {
+          clearInterval(tick);
+          onCrashed(crash);
+          setTimeout(() => { demoRunning = false; runDemoRound(); }, 5000);
+        } else {
+          onFlying(mult);
+        }
+      }, 100);
+    }, 5000);
   }
 
-  function localStartFlying() {
-    if (!usingLocalMode) return;
-    localPhase      = "flying";
-    localCrashPoint = generateCrashPoint();
-    localRoundStart = performance.now();
-
-    if (hasBet) setButtonState("cashout");
-    phaseBadge.textContent = badgeText("FLYING");
-    multDisplay.classList.remove("crashed", "cashed");
-    curvePoints = [];
-    countdownEl.classList.remove("visible");
-
-    cancelAnimationFrame(localRafId);
-    localRafId = requestAnimationFrame(localFlightLoop);
-  }
-
-  function startLocalMode() {
-    if (usingLocalMode) return;
-    usingLocalMode = true;
-    console.warn("[Aviator] Firebase unavailable – switching to LOCAL MODE");
-    showLocalModeBadge();
-    if (typeof window.hideLoader === "function") window.hideLoader();
-    localStartWaiting();
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  //  FIREBASE LISTENER
-  // ══════════════════════════════════════════════════════════════════════
+  /* ── Firebase init ──────────────────────────────────────── */
+  let fbConnected = false;
+  let fbTimeout;
 
   function initFirebase() {
-    if (!window.db || !window.onSnapshot || !window.firestoreDoc) {
+    if (!window._db || !window._snap || !window._doc) {
       setTimeout(initFirebase, 500);
       return;
     }
 
-    const gameRef = window.firestoreDoc(window.db, "game_state", "current");
-
-    window.onSnapshot(
-      gameRef,
-      (snap) => {
-        if (!firebaseConnected) {
-          firebaseConnected = true;
-          clearTimeout(firebaseTimeoutId);
-
-          // Firebase came back while local mode was already running
-          if (usingLocalMode) {
-            console.info("[Aviator] Firebase reconnected – leaving offline mode");
-            usingLocalMode = false;
-            localPhase     = "idle";
-            cancelAnimationFrame(localRafId);
-            clearInterval(countdownTimer);
-            hideLocalModeBadge();
-          }
-
-          if (typeof window.hideLoader === "function") window.hideLoader();
-        }
-
-        if (!snap.exists()) return;
-        const data   = snap.data();
-        const mult   = Number(data.multiplier) || 1.0;
-        const status = data.status || "waiting";
-
-        if (status === "crashed")     handleCrash(mult);
-        else if (status === "flying") handleFlying(mult);
-        else                          handleWaiting();
-      },
-      (err) => {
-        console.error("[Aviator] Firestore error:", err);
-        if (!firebaseConnected) startLocalMode();
-        else phaseBadge.textContent = badgeText("CONNECTION ERROR – RETRYING");
+    fbTimeout = setTimeout(() => {
+      if (!fbConnected) {
+        connBadge.textContent = "OFFLINE";
+        connBadge.classList.add("offline");
+        runDemoRound();
       }
-    );
+    }, 6000);
+
+    const ref = window._doc(window._db, "game_state", "current");
+    window._snap(ref, snap => {
+      if (!snap.exists()) return;
+      fbConnected = true;
+      clearTimeout(fbTimeout);
+      connBadge.textContent = "ONLINE";
+      connBadge.classList.remove("offline");
+
+      const d      = snap.data();
+      const mult   = Number(d.multiplier) || 1.0;
+      const st     = d.status || "waiting";
+
+      if (st === "crashed")      onCrashed(mult);
+      else if (st === "flying")  onFlying(mult);
+      else                       onWaiting();
+    }, err => {
+      console.error("Firestore:", err);
+      connBadge.textContent = "OFFLINE";
+      connBadge.classList.add("offline");
+      if (!demoRunning) runDemoRound();
+    });
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  //  INIT
-  // ══════════════════════════════════════════════════════════════════════
+  /* ── Bootstrap ──────────────────────────────────────────── */
   resizeCanvas();
   buildStars();
-  setBalance(balance);
+  saveBalance();   // render initial balance
   renderHistory();
 
-  window.addEventListener("resize", () => { resizeCanvas(); drawScene(); });
+  window.addEventListener("resize", () => {
+    resizeCanvas();
+    if (status !== "flying") drawScene();
+  });
 
-  // 5-second window for Firebase to respond before local mode kicks in
-  firebaseTimeoutId = setTimeout(() => {
-    if (!firebaseConnected) {
-      console.warn("[Aviator] No Firebase response in 5 s – activating offline mode");
-      startLocalMode();
-    }
-  }, 5000);
-
-  if (window.db) {
+  if (window._db) {
     initFirebase();
   } else {
-    window.addEventListener("firebase-ready", initFirebase, { once: true });
-    setTimeout(initFirebase, 3000);
+    window.addEventListener("fb-ready", initFirebase, { once: true });
+    // Start demo if firebase never loads
+    setTimeout(() => { if (!fbConnected && !demoRunning) runDemoRound(); }, 4000);
   }
 
 })();
