@@ -1,675 +1,417 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AVIATOR</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AVIATOR ZM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
     :root {
-      --bg:        #090b14;
-      --panel:     #0e1120;
-      --accent:    #e91e63;
-      --accent2:   #ff6b35;
-      --green:     #00e676;
-      --text:      #e8eaf6;
-      --muted:     #7986cb;
-      --border:    #1c2340;
+      --bg:     #090b14;
+      --panel:  #0e1120;
+      --accent: #e91e63;
+      --acc2:   #ff6b35;
+      --green:  #00e676;
+      --text:   #e8eaf6;
+      --muted:  #7986cb;
+      --border: #1c2340;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    body{
+      background:var(--bg);color:var(--text);
+      font-family:'Rajdhani',sans-serif;
+      height:100dvh;display:flex;flex-direction:column;overflow:hidden;
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* ── TOPBAR ── */
+    #topbar{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:10px 16px;background:var(--panel);
+      border-bottom:1px solid var(--border);flex-shrink:0;
+    }
+    .logo{
+      font-family:'Orbitron',sans-serif;font-size:1.05rem;font-weight:900;
+      letter-spacing:4px;display:flex;align-items:center;gap:8px;
+      background:linear-gradient(90deg,var(--accent),var(--acc2));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    }
+    .logo svg{flex-shrink:0}
+    #conn-badge{
+      font-size:0.6rem;letter-spacing:2px;padding:3px 8px;border-radius:10px;
+      font-family:'Rajdhani',sans-serif;font-weight:700;
+      background:#1a2a10;color:#69f0ae;border:1px solid #2e5c30;
+    }
+    #conn-badge.offline{background:#2a1010;color:#ef5350;border-color:#5c2e2e;}
+    .topright{display:flex;align-items:center;gap:10px}
+    #walletBtn{
+      background:transparent;border:1px solid var(--border);border-radius:8px;
+      color:var(--muted);font-family:'Rajdhani',sans-serif;font-weight:700;
+      font-size:0.78rem;letter-spacing:1px;padding:6px 11px;cursor:pointer;
+      transition:all .15s;
+    }
+    #walletBtn:hover{border-color:var(--green);color:var(--green)}
+    .bal-wrap{text-align:right}
+    .bal-lbl{font-size:0.58rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+    .bal-val{font-family:'Orbitron',sans-serif;font-size:.95rem;color:var(--green)}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Rajdhani', sans-serif;
-      min-height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+    /* ── CANVAS AREA ── */
+    #game-wrap{
+      position:relative;flex:1 1 auto;overflow:hidden;
+      background:radial-gradient(ellipse at 50% 110%,#1a0630 0%,var(--bg) 68%);
     }
+    canvas{display:block;width:100%;height:100%}
+    #stars{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+    .star{
+      position:absolute;background:#fff;border-radius:50%;
+      animation:twinkle var(--d,3s) ease-in-out infinite alternate;
+    }
+    @keyframes twinkle{from{opacity:.08}to{opacity:.9}}
 
-    /* ══════════════════════════════════════════
-       LOADING SCREEN
-    ══════════════════════════════════════════ */
-    #loader {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      background: #090b14;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0;
-      transition: opacity 0.7s ease, transform 0.7s ease;
-    }
-    #loader.hide {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    /* Stars inside loader */
-    #loader-stars {
-      position: absolute;
-      inset: 0;
-      overflow: hidden;
-      pointer-events: none;
-    }
-    .lstar {
-      position: absolute;
-      background: white;
-      border-radius: 50%;
-      animation: ltwinkle var(--d, 2s) ease-in-out infinite alternate;
-    }
-    @keyframes ltwinkle { from { opacity: 0.05; } to { opacity: 0.8; } }
-
-    /* Runway / sky scene */
-    #loader-scene {
-      position: relative;
-      width: 100%;
-      height: 180px;
-      overflow: hidden;
-      margin-bottom: 28px;
+    #phase-badge{
+      position:absolute;top:10px;left:50%;transform:translateX(-50%);
+      background:rgba(14,17,32,.88);border:1px solid var(--border);
+      border-radius:20px;padding:4px 14px;
+      font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+      white-space:nowrap;
     }
 
-    /* Glowing ground line */
-    .runway {
-      position: absolute;
-      bottom: 0;
-      left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
-      box-shadow: 0 0 16px var(--accent);
+    #multiplier{
+      position:absolute;top:50%;left:50%;
+      transform:translate(-50%,-65%);
+      font-family:'Orbitron',sans-serif;
+      font-size:clamp(2.6rem,11vw,5.5rem);font-weight:900;color:#fff;
+      text-shadow:0 0 40px rgba(233,30,99,.7),0 0 80px rgba(233,30,99,.25);
+      pointer-events:none;white-space:nowrap;transition:color .25s;
     }
-    /* Runway dashes */
-    .runway-dashes {
-      position: absolute;
-      bottom: 2px;
-      left: 0; right: 0;
-      height: 10px;
-      overflow: hidden;
+    #multiplier.crashed{
+      color:var(--accent);text-shadow:0 0 50px rgba(233,30,99,1);
+      animation:shake .45s ease;
     }
-    .runway-dashes::before {
-      content: '';
-      position: absolute;
-      top: 4px;
-      left: 0; right: 0;
-      height: 2px;
-      background: repeating-linear-gradient(
-        90deg,
-        rgba(255,255,255,0.15) 0px,
-        rgba(255,255,255,0.15) 30px,
-        transparent 30px,
-        transparent 60px
-      );
-      animation: dashmove 0.6s linear infinite;
-    }
-    @keyframes dashmove { from { transform: translateX(0); } to { transform: translateX(-60px); } }
-
-    /* Exhaust trail */
-    .trail {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      height: 4px;
-      border-radius: 2px;
-      animation: trail-anim 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
-      transform-origin: right center;
-    }
-    @keyframes trail-anim {
-      0%   { left: -10%; width: 0;   opacity: 0; top: 72%; }
-      15%  { opacity: 0.9; }
-      60%  { left: 18%;  width: 60px; top: 42%; opacity: 0.6; }
-      85%  { left: 60%;  width: 40px; top: 22%; opacity: 0.3; }
-      100% { left: 100%; width: 0;   top: 10%; opacity: 0; }
+    #multiplier.cashed{color:var(--green);text-shadow:0 0 40px rgba(0,230,118,.8)}
+    @keyframes shake{
+      0%,100%{transform:translate(-50%,-65%)}
+      20%{transform:translate(-52%,-65%)}
+      40%{transform:translate(-48%,-65%)}
+      60%{transform:translate(-52%,-65%)}
+      80%{transform:translate(-49%,-65%)}
     }
 
-    /* Plane SVG */
-    .loader-plane {
-      position: absolute;
-      width: 70px;
-      animation: plane-fly 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
-      filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)) drop-shadow(0 0 20px var(--accent));
+    #history{
+      position:absolute;bottom:0;left:0;right:0;
+      display:flex;gap:5px;padding:5px 8px;
+      overflow-x:auto;scrollbar-width:none;
+      background:rgba(9,11,20,.55);
     }
-    @keyframes plane-fly {
-      0%   { left: -12%; top: 72%; transform: rotate(-5deg) scaleX(1); }
-      15%  { transform: rotate(-10deg) scaleX(1); }
-      60%  { left: 60%;  top: 38%; transform: rotate(-18deg) scaleX(1); }
-      85%  { transform: rotate(-22deg) scaleX(1); }
-      100% { left: 108%; top: 8%;  transform: rotate(-20deg) scaleX(1); }
+    #history::-webkit-scrollbar{display:none}
+    .hchip{
+      flex:0 0 auto;font-family:'Orbitron',sans-serif;
+      font-size:.62rem;padding:3px 7px;border-radius:6px;font-weight:700;
     }
+    .hchip.lo{background:#2a0a14;color:#ef5350}
+    .hchip.mi{background:#0a2a12;color:#66bb6a}
+    .hchip.hi{background:#0a1a3a;color:#42a5f5}
 
-    /* Afterburner particles */
-    .spark {
-      position: absolute;
-      width: 3px; height: 3px;
-      border-radius: 50%;
-      background: var(--accent2);
-      animation: spark-fly 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+    #cdown{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(9,11,20,.72);font-family:'Orbitron',sans-serif;
+      font-size:4rem;font-weight:900;color:#fff;
+      pointer-events:none;opacity:0;transition:opacity .3s;
     }
-    .spark:nth-child(1) { animation-delay: 0s;    width:4px; height:4px; }
-    .spark:nth-child(2) { animation-delay: 0.08s; background: #fff; }
-    .spark:nth-child(3) { animation-delay: 0.16s; width:2px; height:2px; }
-    @keyframes spark-fly {
-      0%   { left: -8%; top: 72%; opacity: 1; }
-      60%  { left: 55%; top: 40%; opacity: 0.7; }
-      85%  { left: 57%; top: 23%; opacity: 0; }
-      100% { left: 100%; top: 5%; opacity: 0; }
-    }
-
-    /* Title */
-    .loader-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(2.2rem, 10vw, 3.4rem);
-      font-weight: 900;
-      letter-spacing: 10px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2), #fff, var(--accent));
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: shimmer 2s linear infinite;
-      margin-bottom: 6px;
-    }
-    @keyframes shimmer { to { background-position: 200% center; } }
-
-    .loader-subtitle {
-      font-size: 0.75rem;
-      letter-spacing: 4px;
-      color: var(--muted);
-      text-transform: uppercase;
-      margin-bottom: 36px;
-    }
-
-    /* Progress bar */
-    .loader-bar-wrap {
-      width: min(320px, 80vw);
-      height: 4px;
-      background: rgba(255,255,255,0.07);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 14px;
-    }
-    .loader-bar {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 2px;
-      box-shadow: 0 0 10px var(--accent);
-      transition: width 0.3s ease;
-    }
-
-    .loader-status {
-      font-size: 0.7rem;
-      letter-spacing: 3px;
-      color: var(--muted);
-      text-transform: uppercase;
-      min-height: 18px;
-    }
-
-    /* Orbit rings */
-    .orbit-ring {
-      position: absolute;
-      border-radius: 50%;
-      border: 1px solid rgba(233, 30, 99, 0.12);
-      animation: orbit-pulse 3s ease-in-out infinite alternate;
-    }
-    .orbit-ring:nth-child(1) { width: 260px; height: 260px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 0s; }
-    .orbit-ring:nth-child(2) { width: 340px; height: 340px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 0.5s; }
-    .orbit-ring:nth-child(3) { width: 420px; height: 420px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: 1s; border-color: rgba(255,107,53,0.08); }
-    @keyframes orbit-pulse {
-      from { opacity: 0.4; transform: translate(-50%,-50%) scale(0.96); }
-      to   { opacity: 1;   transform: translate(-50%,-50%) scale(1.04); }
-    }
-
-    /* ══════════════════════════════════════════
-       GAME STYLES (unchanged from original)
-    ══════════════════════════════════════════ */
-
-    /* ── TOP BAR ── */
-    #topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 18px;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      z-index: 10;
-    }
-    #topbar .logo {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1.1rem;
-      font-weight: 900;
-      letter-spacing: 4px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    #topbar .bal-wrap { text-align: right; }
-    #topbar .bal-label { font-size: 0.65rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
-    #topbar .bal-val {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1rem;
-      color: var(--green);
-    }
-
-    /* ── GAME CANVAS ── */
-    #game-container {
-      position: relative;
-      flex: 1 1 auto;
-      overflow: hidden;
-      background: radial-gradient(ellipse at 50% 110%, #1a0630 0%, var(--bg) 70%);
-    }
-
-    canvas { display: block; width: 100%; height: 100%; }
-
-    /* Stars overlay */
-    #stars {
-      position: absolute; inset: 0; pointer-events: none; overflow: hidden;
-    }
-    .star {
-      position: absolute;
-      background: white;
-      border-radius: 50%;
-      animation: twinkle var(--d,3s) ease-in-out infinite alternate;
-    }
-    @keyframes twinkle { from { opacity: 0.1; } to { opacity: 0.9; } }
-
-    /* Multiplier */
-    #multiplier {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -60%);
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(2.5rem, 10vw, 5rem);
-      font-weight: 900;
-      color: #fff;
-      text-shadow: 0 0 40px rgba(233,30,99,0.7), 0 0 80px rgba(233,30,99,0.3);
-      transition: color 0.3s;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-    #multiplier.crashed {
-      color: var(--accent);
-      text-shadow: 0 0 40px rgba(233,30,99,1);
-      animation: shake 0.4s ease;
-    }
-    #multiplier.cashed {
-      color: var(--green);
-      text-shadow: 0 0 40px rgba(0,230,118,0.8);
-    }
-    @keyframes shake {
-      0%,100%{transform:translate(-50%,-60%)}
-      20%{transform:translate(-52%,-60%)}
-      40%{transform:translate(-48%,-60%)}
-      60%{transform:translate(-52%,-60%)}
-      80%{transform:translate(-49%,-60%)}
-    }
-
-    /* Phase badge */
-    #phase-badge {
-      position: absolute;
-      top: 12px; left: 50%; transform: translateX(-50%);
-      background: rgba(14,17,32,0.85);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 4px 14px;
-      font-size: 0.72rem;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    /* History ribbon */
-    #history {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      display: flex;
-      gap: 6px;
-      padding: 6px 10px;
-      overflow-x: auto;
-      scrollbar-width: none;
-      background: rgba(9,11,20,0.5);
-    }
-    #history::-webkit-scrollbar { display: none; }
-    .hist-item {
-      flex: 0 0 auto;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.65rem;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-weight: 700;
-    }
-    .hist-item.low  { background:#2a0a14; color:#ef5350; }
-    .hist-item.mid  { background:#0a2a12; color:#66bb6a; }
-    .hist-item.high { background:#0a1a3a; color:#42a5f5; }
+    #cdown.on{opacity:1}
 
     /* ── BOTTOM PANEL ── */
-    #bottom-panel {
-      background: var(--panel);
-      border-top: 1px solid var(--border);
-      padding: 14px 16px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    #btm{
+      background:var(--panel);border-top:1px solid var(--border);
+      padding:12px 14px 22px;display:flex;flex-direction:column;gap:10px;
+      flex-shrink:0;
+    }
+    .bet-row{display:flex;align-items:center;gap:8px}
+    .bet-row label{font-size:.68rem;letter-spacing:2px;color:var(--muted);text-transform:uppercase;white-space:nowrap}
+    #betInput{
+      flex:1;background:var(--bg);border:1px solid var(--border);
+      border-radius:8px;color:var(--text);font-family:'Orbitron',sans-serif;
+      font-size:.95rem;padding:10px 12px;outline:none;text-align:center;
+      -moz-appearance:textfield;
+    }
+    #betInput::-webkit-inner-spin-button,
+    #betInput::-webkit-outer-spin-button{-webkit-appearance:none}
+    #betInput:focus{border-color:var(--accent)}
+    .qbets{display:flex;gap:6px}
+    .qb{
+      flex:1;background:var(--bg);border:1px solid var(--border);
+      border-radius:7px;color:var(--muted);font-family:'Rajdhani',sans-serif;
+      font-weight:700;font-size:.82rem;padding:7px 0;cursor:pointer;transition:all .15s;
+    }
+    .qb:hover{border-color:var(--accent);color:var(--text)}
+    #actionBtn{
+      width:100%;padding:17px;font-family:'Orbitron',sans-serif;
+      font-size:.95rem;font-weight:700;letter-spacing:3px;border:none;
+      border-radius:12px;cursor:pointer;transition:all .2s;
+    }
+    #actionBtn.s-bet{
+      background:linear-gradient(135deg,var(--accent),#c2185b);color:#fff;
+      box-shadow:0 4px 22px rgba(233,30,99,.4);
+    }
+    #actionBtn.s-bet:hover{transform:translateY(-1px);box-shadow:0 6px 30px rgba(233,30,99,.6)}
+    #actionBtn.s-cash{
+      background:linear-gradient(135deg,var(--green),#00c853);color:#000;
+      box-shadow:0 4px 22px rgba(0,230,118,.4);
+      animation:pg .8s ease-in-out infinite alternate;
+    }
+    @keyframes pg{
+      from{box-shadow:0 4px 20px rgba(0,230,118,.3)}
+      to{box-shadow:0 7px 36px rgba(0,230,118,.7)}
+    }
+    #actionBtn.s-wait{
+      background:var(--bg);color:var(--muted);border:1px solid var(--border);cursor:not-allowed;
     }
 
-    /* Bet amount row */
-    .bet-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    /* ── WALLET MODAL ── */
+    #modal-ov{
+      position:fixed;inset:0;background:rgba(0,0,0,.78);
+      display:flex;align-items:flex-end;justify-content:center;
+      z-index:500;opacity:0;pointer-events:none;transition:opacity .25s;
     }
-    .bet-row label {
-      font-size: 0.7rem;
-      letter-spacing: 2px;
-      color: var(--muted);
-      text-transform: uppercase;
-      white-space: nowrap;
+    #modal-ov.open{opacity:1;pointer-events:all}
+    #wallet-sheet{
+      background:var(--panel);border:1px solid var(--border);
+      border-radius:22px 22px 0 0;width:100%;max-width:480px;
+      padding:22px 18px 34px;
+      transform:translateY(100%);transition:transform .3s ease;
     }
-    #betInput {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1rem;
-      padding: 10px 12px;
-      outline: none;
-      text-align: center;
-      -moz-appearance: textfield;
-    }
-    #betInput::-webkit-outer-spin-button,
-    #betInput::-webkit-inner-spin-button { -webkit-appearance: none; }
-    #betInput:focus { border-color: var(--accent); }
+    #modal-ov.open #wallet-sheet{transform:translateY(0)}
+    .mhdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .mhdr h2{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;letter-spacing:3px}
+    #closeModal{background:none;border:none;color:var(--muted);font-size:1.5rem;cursor:pointer;line-height:1}
 
-    .quick-bets {
-      display: flex; gap: 6px;
+    .bal-card{
+      background:var(--bg);border:1px solid var(--border);border-radius:12px;
+      padding:13px 15px;margin-bottom:14px;
+      display:flex;justify-content:space-between;align-items:center;
     }
-    .qb {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--muted);
-      font-family: 'Rajdhani', sans-serif;
-      font-weight: 600;
-      font-size: 0.85rem;
-      padding: 6px 0;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .qb:hover { border-color: var(--accent); color: var(--text); }
+    .bc-lbl{font-size:.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
+    .bc-val{font-family:'Orbitron',sans-serif;font-size:1.3rem;color:var(--green)}
+    .bc-cur{font-size:.78rem;color:var(--muted)}
 
-    /* Action button */
-    #actionBtn {
-      width: 100%;
-      padding: 18px;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1rem;
-      font-weight: 700;
-      letter-spacing: 3px;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
+    .tabs{display:flex;gap:0;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:16px}
+    .tabs button{
+      flex:1;padding:9px;border:none;border-radius:8px;background:none;
+      color:var(--muted);font-family:'Rajdhani',sans-serif;font-weight:700;
+      font-size:.88rem;letter-spacing:2px;cursor:pointer;transition:all .2s;
     }
-    #actionBtn.state-bet {
-      background: linear-gradient(135deg, var(--accent), #c2185b);
-      color: white;
-      box-shadow: 0 4px 20px rgba(233,30,99,0.4);
-    }
-    #actionBtn.state-bet:hover { box-shadow: 0 6px 30px rgba(233,30,99,0.6); transform: translateY(-1px); }
-    #actionBtn.state-cashout {
-      background: linear-gradient(135deg, var(--green), #00c853);
-      color: #000;
-      box-shadow: 0 4px 20px rgba(0,230,118,0.4);
-      animation: pulse-green 0.8s ease-in-out infinite alternate;
-    }
-    @keyframes pulse-green {
-      from { box-shadow: 0 4px 20px rgba(0,230,118,0.3); }
-      to   { box-shadow: 0 6px 35px rgba(0,230,118,0.7); }
-    }
-    #actionBtn.state-waiting {
-      background: var(--bg);
-      color: var(--muted);
-      border: 1px solid var(--border);
-      cursor: not-allowed;
-    }
-    #actionBtn:disabled { cursor: not-allowed; }
+    .tabs button.on{background:var(--border);color:var(--text)}
 
-    /* Win toast */
-    #toast {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%,-50%) scale(0.7);
-      background: var(--panel);
-      border: 2px solid var(--green);
-      border-radius: 16px;
-      padding: 20px 32px;
-      text-align: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: all 0.3s;
-      z-index: 100;
+    .amt-wrap{position:relative;margin-bottom:8px}
+    .pfx{
+      position:absolute;left:13px;top:50%;transform:translateY(-50%);
+      font-family:'Orbitron',sans-serif;font-size:.88rem;color:var(--muted);pointer-events:none;
     }
-    #toast.show {
-      opacity: 1;
-      transform: translate(-50%,-50%) scale(1);
+    #mAmt{
+      width:100%;background:var(--bg);border:1px solid var(--border);
+      border-radius:10px;color:var(--text);font-family:'Orbitron',sans-serif;
+      font-size:1.05rem;padding:13px 13px 13px 40px;outline:none;
+      -moz-appearance:textfield;
     }
-    #toast .tw { font-family:'Orbitron',sans-serif; font-size:1.6rem; color:var(--green); }
-    #toast .ta { font-size:0.8rem; color:var(--muted); margin-top:4px; letter-spacing:2px; }
+    #mAmt::-webkit-inner-spin-button,#mAmt::-webkit-outer-spin-button{-webkit-appearance:none}
+    #mAmt:focus{border-color:var(--accent)}
+    .min-note{font-size:.68rem;color:var(--muted);margin-bottom:12px;padding-left:2px}
 
-    /* Countdown overlay */
-    #countdown-overlay {
-      position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(9,11,20,0.7);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 4rem;
-      font-weight: 900;
-      color: white;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s;
+    .qamts{display:flex;gap:7px;margin-bottom:14px}
+    .qa{
+      flex:1;background:var(--bg);border:1px solid var(--border);
+      border-radius:8px;color:var(--muted);font-family:'Rajdhani',sans-serif;
+      font-weight:700;font-size:.82rem;padding:8px 0;cursor:pointer;
+      transition:all .15s;text-align:center;
     }
-    #countdown-overlay.visible { opacity: 1; }
+    .qa:hover{border-color:var(--green);color:var(--green)}
+
+    #wdraw-fields{display:none;margin-bottom:14px}
+    #wdraw-fields.vis{display:block}
+    #wdraw-fields select,#wdraw-fields input{
+      width:100%;background:var(--bg);border:1px solid var(--border);
+      border-radius:10px;color:var(--text);font-family:'Rajdhani',sans-serif;
+      font-size:.95rem;padding:12px 13px;outline:none;margin-bottom:9px;
+    }
+    #wdraw-fields select option{background:var(--panel)}
+    #wdraw-fields select:focus,#wdraw-fields input:focus{border-color:var(--accent)}
+
+    #confirmBtn{
+      width:100%;padding:15px;font-family:'Orbitron',sans-serif;
+      font-size:.9rem;font-weight:700;letter-spacing:3px;border:none;
+      border-radius:12px;cursor:pointer;transition:all .2s;
+    }
+    #confirmBtn.dep{
+      background:linear-gradient(135deg,var(--green),#00c853);color:#000;
+      box-shadow:0 4px 18px rgba(0,230,118,.3);
+    }
+    #confirmBtn.wit{
+      background:linear-gradient(135deg,#ff6b35,#e64a19);color:#fff;
+      box-shadow:0 4px 18px rgba(255,107,53,.3);
+    }
+
+    /* tx history */
+    #tab-hist{display:none}
+    .tx-list{max-height:180px;overflow-y:auto;scrollbar-width:thin}
+    .tx-item{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:9px 0;border-bottom:1px solid var(--border);font-size:.85rem;
+    }
+    .tx-item:last-child{border-bottom:none}
+    .tx-meta{color:var(--muted);font-size:.68rem;letter-spacing:1px}
+    .tx-amt{font-family:'Orbitron',sans-serif;font-size:.82rem}
+    .tx-amt.d{color:var(--green)}.tx-amt.w{color:#ff6b35}
+
+    /* toast */
+    #toast{
+      position:fixed;top:50%;left:50%;
+      transform:translate(-50%,-50%) scale(.7);
+      background:var(--panel);border:2px solid var(--green);
+      border-radius:16px;padding:20px 30px;text-align:center;
+      opacity:0;pointer-events:none;transition:all .3s;z-index:600;
+    }
+    #toast.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+    .tw{font-family:'Orbitron',sans-serif;font-size:1.6rem;color:var(--green)}
+    .ta{font-size:.75rem;color:var(--muted);margin-top:5px;letter-spacing:2px}
+
+    /* error toast */
+    #err-toast{
+      position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);
+      background:#2a0a14;border:1px solid var(--accent);border-radius:10px;
+      padding:10px 18px;font-size:.82rem;color:#ef9a9a;
+      opacity:0;pointer-events:none;transition:all .3s;z-index:700;white-space:nowrap;
+    }
+    #err-toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
   </style>
 </head>
 <body>
 
-  <!-- ══════════════════════════════════════════
-       LOADING SCREEN
-  ══════════════════════════════════════════ -->
-  <div id="loader">
-    <div id="loader-stars"></div>
-
-    <!-- Decorative orbit rings -->
-    <div class="orbit-ring"></div>
-    <div class="orbit-ring"></div>
-    <div class="orbit-ring"></div>
-
-    <!-- Plane animation scene -->
-    <div id="loader-scene">
-      <!-- Exhaust trail -->
-      <div class="trail" style="background: linear-gradient(90deg, transparent, rgba(255,107,53,0.6), rgba(255,107,53,0.2));"></div>
-
-      <!-- Spark particles -->
-      <div class="spark"></div>
-      <div class="spark"></div>
-      <div class="spark"></div>
-
-      <!-- Plane SVG -->
-      <svg class="loader-plane" viewBox="0 0 120 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Fuselage -->
-        <ellipse cx="65" cy="30" rx="50" ry="11" fill="white"/>
-        <!-- Nose cone -->
-        <path d="M115 30 L108 24 L108 36 Z" fill="#e0e0e0"/>
-        <!-- Main wing -->
-        <path d="M55 30 L35 6 L20 6 L45 30 Z" fill="white" opacity="0.9"/>
-        <path d="M55 30 L35 54 L20 54 L45 30 Z" fill="white" opacity="0.7"/>
-        <!-- Tail wing horizontal -->
-        <path d="M18 30 L5 18 L5 30 Z" fill="white" opacity="0.85"/>
-        <path d="M18 30 L5 42 L5 30 Z" fill="white" opacity="0.7"/>
-        <!-- Tail fin vertical -->
-        <path d="M20 28 L10 14 L15 28 Z" fill="white" opacity="0.9"/>
-        <!-- Engine pod -->
-        <ellipse cx="48" cy="40" rx="10" ry="4" fill="#ccc"/>
-        <!-- Window strip -->
-        <rect x="68" y="24" width="28" height="5" rx="2" fill="rgba(150,200,255,0.4)"/>
-        <!-- Afterburner glow -->
-        <ellipse cx="12" cy="30" rx="14" ry="5" fill="url(#burnGrad)"/>
-        <defs>
-          <radialGradient id="burnGrad" cx="100%" cy="50%" r="100%">
-            <stop offset="0%" stop-color="#ff6b35" stop-opacity="0.9"/>
-            <stop offset="60%" stop-color="#e91e63" stop-opacity="0.4"/>
-            <stop offset="100%" stop-color="transparent" stop-opacity="0"/>
-          </radialGradient>
-        </defs>
-      </svg>
-
-      <!-- Runway -->
-      <div class="runway"></div>
-      <div class="runway-dashes"></div>
-    </div>
-
-    <!-- Title -->
-    <div class="loader-title">AVIATOR</div>
-    <div class="loader-subtitle">Prepare for takeoff</div>
-
-    <!-- Progress bar -->
-    <div class="loader-bar-wrap">
-      <div class="loader-bar" id="loader-bar"></div>
-    </div>
-    <div class="loader-status" id="loader-status">INITIALIZING SYSTEMS…</div>
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="#e91e63">
+      <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>
+    </svg>
+    AVIATOR
   </div>
-
-  <!-- TOP BAR -->
-  <div id="topbar">
-    <div class="logo">✈ AVIATOR</div>
+  <div class="topright">
+    <span id="conn-badge">ONLINE</span>
+    <button id="walletBtn">💳 WALLET</button>
     <div class="bal-wrap">
-      <div class="bal-label">Balance</div>
-      <div class="bal-val">$<span id="balance-val">100.00</span></div>
+      <div class="bal-lbl">Balance</div>
+      <div class="bal-val">K<span id="bal-disp">0.00</span></div>
     </div>
   </div>
+</div>
 
-  <!-- GAME AREA -->
-  <div id="game-container">
-    <div id="stars"></div>
-    <canvas id="gameCanvas"></canvas>
-    <div id="phase-badge">WAITING FOR NEXT ROUND</div>
-    <div id="multiplier">1.00x</div>
-    <div id="history"></div>
-    <div id="countdown-overlay"></div>
+<!-- GAME -->
+<div id="game-wrap">
+  <div id="stars"></div>
+  <canvas id="gc"></canvas>
+  <div id="phase-badge">WAITING FOR NEXT ROUND</div>
+  <div id="multiplier">1.00x</div>
+  <div id="history"></div>
+  <div id="cdown"></div>
+</div>
+
+<!-- BOTTOM -->
+<div id="btm">
+  <div class="bet-row">
+    <label>BET K</label>
+    <input id="betInput" type="number" value="0.50" min="0.50" step="0.50" max="50000"/>
   </div>
+  <div class="qbets">
+    <button class="qb" data-a="0.50">K0.50</button>
+    <button class="qb" data-a="2">K2</button>
+    <button class="qb" data-a="5">K5</button>
+    <button class="qb" data-a="10">K10</button>
+  </div>
+  <button id="actionBtn" class="s-bet">PLACE BET</button>
+</div>
 
-  <!-- BOTTOM PANEL -->
-  <div id="bottom-panel">
-    <div class="bet-row">
-      <label>Bet $</label>
-      <input id="betInput" type="number" value="10" min="1" max="1000" />
+<!-- WALLET MODAL -->
+<div id="modal-ov">
+  <div id="wallet-sheet">
+    <div class="mhdr">
+      <h2>WALLET</h2>
+      <button id="closeModal">✕</button>
     </div>
-    <div class="quick-bets">
-      <button class="qb" data-amt="5">$5</button>
-      <button class="qb" data-amt="10">$10</button>
-      <button class="qb" data-amt="25">$25</button>
-      <button class="qb" data-amt="50">$50</button>
+
+    <div class="bal-card">
+      <div>
+        <div class="bc-lbl">Available Balance</div>
+        <div class="bc-val">K<span id="m-bal">0.00</span></div>
+      </div>
+      <div class="bc-cur">Zambian Kwacha (ZMW)</div>
     </div>
-    <button id="actionBtn" class="state-bet">PLACE BET</button>
+
+    <div class="tabs">
+      <button id="tDep" class="on">DEPOSIT</button>
+      <button id="tWit">WITHDRAW</button>
+      <button id="tHist">HISTORY</button>
+    </div>
+
+    <!-- FORM tab -->
+    <div id="tab-form">
+      <div class="amt-wrap">
+        <span class="pfx">K</span>
+        <input id="mAmt" type="number" placeholder="0.00" min="0.50" step="0.50"/>
+      </div>
+      <div class="min-note">Minimum: K0.50</div>
+      <div class="qamts">
+        <div class="qa" data-qa="10">K10</div>
+        <div class="qa" data-qa="20">K20</div>
+        <div class="qa" data-qa="50">K50</div>
+        <div class="qa" data-qa="100">K100</div>
+      </div>
+
+      <div id="wdraw-fields">
+        <select id="wMethod">
+          <option value="">Select payment method…</option>
+          <option value="airtel">Airtel Money</option>
+          <option value="mtn">MTN Mobile Money</option>
+          <option value="zanaco">Zanaco Bank Transfer</option>
+          <option value="fnb">FNB Zambia</option>
+          <option value="stanbic">Stanbic Bank</option>
+        </select>
+        <input id="wAccount" type="text" placeholder="Mobile / account number"/>
+      </div>
+
+      <button id="confirmBtn" class="dep">DEPOSIT FUNDS</button>
+    </div>
+
+    <!-- HISTORY tab -->
+    <div id="tab-hist">
+      <div class="tx-list" id="txList">
+        <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0">No transactions yet</div>
+      </div>
+    </div>
   </div>
+</div>
 
-  <!-- Win Toast -->
-  <div id="toast">
-    <div class="tw" id="toast-amt"></div>
-    <div class="ta">CASHED OUT ✓</div>
-  </div>
+<!-- TOASTS -->
+<div id="toast"><div class="tw" id="t-amt"></div><div class="ta">CASHED OUT ✓</div></div>
+<div id="err-toast" id="err-t"></div>
 
-  <!-- ══════════════════════════════════════════
-       LOADER CONTROLLER
-  ══════════════════════════════════════════ -->
-  <script>
-    // Build loader stars
-    (function buildLoaderStars() {
-      const c = document.getElementById('loader-stars');
-      for (let i = 0; i < 100; i++) {
-        const s = document.createElement('div');
-        s.className = 'lstar';
-        const sz = Math.random() * 2 + 0.5;
-        s.style.cssText = `
-          width:${sz}px; height:${sz}px;
-          top:${Math.random()*100}%;
-          left:${Math.random()*100}%;
-          --d:${(Math.random()*3+1).toFixed(1)}s;
-          animation-delay:${(Math.random()*3).toFixed(1)}s;
-        `;
-        c.appendChild(s);
-      }
-    })();
-
-    const loaderBar    = document.getElementById('loader-bar');
-    const loaderStatus = document.getElementById('loader-status');
-    const loader       = document.getElementById('loader');
-
-    let loaderProgress = 0;
-    let loaderDone     = false;
-
-    // Animate progress bar to a target value
-    function setProgress(pct, label) {
-      loaderProgress = pct;
-      loaderBar.style.width = pct + '%';
-      if (label) loaderStatus.textContent = label;
-    }
-
-    // Called by game.js once the first Firestore snapshot is received
-    window.hideLoader = function() {
-      if (loaderDone) return;
-      loaderDone = true;
-      setProgress(100, 'CLEARED FOR TAKEOFF ✓');
-      setTimeout(() => {
-        loader.classList.add('hide');
-        // fully remove from DOM after transition
-        setTimeout(() => loader.remove(), 800);
-      }, 600);
-    };
-
-    // Staged progress to give visual feedback
-    setTimeout(() => setProgress(25, 'LOADING ASSETS…'),         300);
-    setTimeout(() => setProgress(50, 'CONNECTING TO SERVER…'),  1000);
-    setTimeout(() => setProgress(75, 'SYNCING GAME STATE…'),    2000);
-
-    // Fallback: force-hide after 6 s even if Firebase never responds
-    setTimeout(() => window.hideLoader(), 6000);
-  </script>
-
-  <!-- Firebase -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBQ1pK9_Ei-fQZSzwXnqcHp20KvcXi1jC8",
-      authDomain: "aviatorgame-18041.firebaseapp.com",
-      projectId: "aviatorgame-18041",
-      storageBucket: "aviatorgame-18041.firebasestorage.app",
-      messagingSenderId: "62361165710",
-      appId: "1:62361165710:web:797c2fdf8c8e3dade98edf",
-      measurementId: "G-LFH6H8TJ2Z"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-    window.db = db;
-    window.onSnapshot = onSnapshot;
-    window.firestoreDoc = doc;
-
-    // Signal that Firebase is ready
-    window.dispatchEvent(new Event('firebase-ready'));
-  </script>
-  <script src="game.js"></script>
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  const cfg = {
+    apiKey:"AIzaSyBQ1pK9_Ei-fQZSzwXnqcHp20KvcXi1jC8",
+    authDomain:"aviatorgame-18041.firebaseapp.com",
+    projectId:"aviatorgame-18041",
+    storageBucket:"aviatorgame-18041.firebasestorage.app",
+    messagingSenderId:"62361165710",
+    appId:"1:62361165710:web:797c2fdf8c8e3dade98edf"
+  };
+  const app = initializeApp(cfg);
+  const db  = getFirestore(app);
+  window._db  = db;
+  window._snap = onSnapshot;
+  window._doc  = doc;
+  window.dispatchEvent(new Event('fb-ready'));
+</script>
+<script src="game.js"></script>
 </body>
 </html>
