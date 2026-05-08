@@ -66,6 +66,7 @@
   let activeBet   = null;   // { amount } live this round
   let queuedBet   = null;   // { amount } for next round
   let activeTab   = "dep";
+  let fbOk        = false;
 
   /* ── Animation state ────────────────────────────────────── */
   let rafId       = null;
@@ -315,7 +316,7 @@
         // Auto cash-out
         if (activeBet && autoCashChk && autoCashChk.checked) {
           const target = parseFloat(autoCashInput.value) || 99999;
-          if (target >= 1.01 && currentMult >= target) {
+          if (target >= 1.20 && currentMult >= target) {
             doCashOut();
           }
         }
@@ -364,16 +365,18 @@
     bounceT     = 0;
 
     multEl.classList.remove("crashed", "cashed");
+    multEl.textContent     = currentMult.toFixed(2) + "x";
     phaseBadge.textContent = "FLYING";
     cdownEl.classList.remove("on");
 
-    // Promote queued bet
+    // Promote queued bet → active bet
     if (queuedBet) {
       activeBet = queuedBet;
       queuedBet = null;
       setBtn("cash");
-    } else if (!activeBet) {
-      setBtn("bet");
+    } else {
+      // No bet this round — show locked state
+      setBtn("locked");
     }
 
     startLoop();
@@ -384,7 +387,6 @@
     status = "crashed";
     stopLoop();
 
-    // Snap to exact crash value
     currentMult = finalMult;
     curvePoints.push(finalMult);
 
@@ -392,45 +394,66 @@
     multEl.textContent     = `CRASHED @ ${finalMult.toFixed(2)}x`;
     phaseBadge.textContent = "CRASHED!";
 
+    // Lose active bet
     if (activeBet) {
       showErr(`Crashed at ${finalMult.toFixed(2)}x — K${activeBet.amount.toFixed(2)} lost`);
       activeBet = null;
     }
 
+    // Keep queued bet — it fires next round
+    // Show appropriate button
     if (queuedBet) {
       setBtn("wait");
     } else {
       setBtn("bet");
     }
 
-    // Record history
+    // Record crash
     roundHist.unshift(finalMult);
     if (roundHist.length > 30) roundHist.pop();
     localStorage.setItem("zav_rh", JSON.stringify(roundHist));
     renderHistory();
+    drawScene();
 
-    drawScene(); // final static frame
+    // ── 5-second countdown ──────────────────────────────
+    // Phase 1 (5s): show "CRASHED" with countdown
+    // Phase 2 (after 0): switch to "BETTING OPEN", accept new bets
+    // Phase 3 (after short gap): begin flying
 
-    // Countdown
     const doAutoBet = autoBetChk && autoBetChk.checked;
     let s = COUNTDOWN_S;
-    cdownEl.textContent = s;
+
+    // Show countdown overlay
+    cdownEl.innerHTML = `<div style="text-align:center">
+      <div style="font-size:1rem;letter-spacing:3px;color:#7986cb;margin-bottom:8px">NEXT ROUND IN</div>
+      <div id="cd-num" style="font-size:4rem;font-weight:900">${s}</div>
+    </div>`;
     cdownEl.classList.add("on");
+    phaseBadge.textContent = "CRASHED — BETTING OPEN";
+
+    const cdNum = () => document.getElementById("cd-num");
 
     const cd = setInterval(() => {
       s--;
+      if (cdNum()) cdNum().textContent = s;
+
       if (s <= 0) {
         clearInterval(cd);
         cdownEl.classList.remove("on");
 
+        // Auto-bet queues before round starts
         if (doAutoBet && !queuedBet && !activeBet) {
-          queueBet(Math.round(parseFloat(betInput.value) * 100) / 100 || MIN_BET, true);
+          queueBet(Math.round((parseFloat(betInput.value) || MIN_BET) * 100) / 100, true);
         }
 
+        // Brief "Starting…" flash
         beginWaiting();
-        setTimeout(() => beginFlying(1.00), 600);
-      } else {
-        cdownEl.textContent = s;
+
+        // Start flight after tiny gap
+        setTimeout(() => {
+          // Only self-start in demo mode (Firebase will push its own "flying" event)
+          if (!fbOk) beginFlying(1.00);
+        }, 700);
       }
     }, 1000);
   }
@@ -509,8 +532,13 @@
       actionBtn.classList.add("s-cash");
       const val = activeBet ? (activeBet.amount * currentMult).toFixed(2) : "0.00";
       actionBtn.textContent = `CASH OUT  K${val}`;
+    } else if (state === "locked") {
+      // Round in progress, no bet placed
+      actionBtn.classList.add("s-wait");
+      actionBtn.textContent = "ROUND IN PROGRESS…";
+      actionBtn.disabled = true;
     } else {
-      // waiting
+      // "wait" — queued bet pending
       actionBtn.classList.add("s-wait");
       const qa = queuedBet ? queuedBet.amount.toFixed(2) : "?";
       actionBtn.textContent = `K${qa} QUEUED — TAP TO CANCEL`;
@@ -537,10 +565,10 @@
       </label>
       <label style="display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap">
         <input type="checkbox" id="autoCashChk" style="accent-color:#00e676;width:15px;height:15px;flex-shrink:0"/>
-        CASH OUT @
+        AUTO CASH-OUT @
       </label>
       <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:70px;max-width:110px">
-        <input id="autoCashInput" type="number" value="2.00" min="1.01" step="0.01"
+        <input id="autoCashInput" type="number" value="1.50" min="1.20" step="0.01"
           style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
                  color:var(--text);font-family:'Orbitron',sans-serif;font-size:.82rem;
                  padding:7px 8px;outline:none;text-align:center;-moz-appearance:textfield;"/>
@@ -562,9 +590,10 @@
     `;
     document.head.appendChild(st);
 
+    // Clamp to minimum 1.20
     autoCashInput.addEventListener("blur", () => {
       const v = parseFloat(autoCashInput.value);
-      if (isNaN(v) || v < 1.01) autoCashInput.value = "1.20";
+      if (isNaN(v) || v < 1.20) autoCashInput.value = "1.20";
     });
   }
 
@@ -742,20 +771,23 @@
 
     beginWaiting();
 
-    // 5s betting window with countdown
+    // Show betting open countdown on canvas overlay
     let s = COUNTDOWN_S;
-    cdownEl.textContent = s;
+    cdownEl.innerHTML = `<div style="text-align:center">
+      <div style="font-size:1rem;letter-spacing:3px;color:#7986cb;margin-bottom:8px">STARTING IN</div>
+      <div id="cd-num" style="font-size:4rem;font-weight:900">${s}</div>
+    </div>`;
     cdownEl.classList.add("on");
-    phaseBadge.textContent = "BETTING OPEN";
+
+    const cdNum = () => document.getElementById("cd-num");
 
     const cd = setInterval(() => {
       s--;
+      if (cdNum()) cdNum().textContent = s;
       if (s <= 0) {
         clearInterval(cd);
         cdownEl.classList.remove("on");
         startDemoFlight();
-      } else {
-        cdownEl.textContent = s;
       }
     }, 1000);
   }
@@ -764,17 +796,14 @@
     const crash = genCrash();
     beginFlying(1.00);
 
-    // Poll every 80ms to check if we've hit the crash point
     const poll = setInterval(() => {
       if (status !== "flying") { clearInterval(poll); return; }
       if (currentMult >= crash) {
         clearInterval(poll);
         currentMult = crash;
         beginCrashed(crash);
-        setTimeout(() => {
-          demoActive = false;
-          runDemoRound();
-        }, (COUNTDOWN_S + 1) * 1000);
+        // Reset demoActive after countdown so runDemoRound can be called again if needed
+        setTimeout(() => { demoActive = false; }, (COUNTDOWN_S + 2) * 1000);
       }
     }, 80);
   }
@@ -782,8 +811,6 @@
   /* ─────────────────────────────────────────────────────────
      FIREBASE
   ───────────────────────────────────────────────────────── */
-  let fbOk = false;
-
   function initFirebase() {
     if (!window._db || !window._snap || !window._doc) {
       setTimeout(initFirebase, 400);
